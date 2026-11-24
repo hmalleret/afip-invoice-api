@@ -13,7 +13,11 @@ from decimal import Decimal
 from typing import Optional
 
 from PIL import Image
-from pyzbar.pyzbar import decode
+try:
+    from pyzbar.pyzbar import decode
+    _PYZBAR_AVAILABLE = True
+except (ImportError, OSError):
+    _PYZBAR_AVAILABLE = False
 
 from ..models import TIPO_COMPROBANTE
 
@@ -24,6 +28,9 @@ def scan_afip_qr(img: Image.Image) -> Optional[dict]:
     Uses multi-region scanning (bottom quadrants where AFIP QRs are standardized).
     Returns decoded AFIP dict if found, else None.
     """
+    if not _PYZBAR_AVAILABLE:
+        return None
+
     w, h = img.size
 
     # Check candidate crop regions where AFIP QR codes are placed by regulation

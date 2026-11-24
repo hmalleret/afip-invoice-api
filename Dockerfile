@@ -2,11 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for pdfplumber
+# System deps for pdfplumber and pyzbar
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpoppler-cpp-dev \
     poppler-utils \
     libzbar0 \
+    libzbar-dev \
+    && ldconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency resolution
