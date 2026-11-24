@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: afip-invoice-api
+    runtime: docker
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: MIN_CONFIDENCE_TO_BILL
+        value: "0.50"
+      - key: GOOGLE_API_KEY
+        sync: false
