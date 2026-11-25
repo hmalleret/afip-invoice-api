@@ -62,9 +62,9 @@ app = FastAPI(
     title=get_settings().api_title,
     version=get_settings().api_version,
     description=(
-        "Extract structured JSON data from AFIP electronic invoices. "
+        "Extract structured JSON data from ARCA (ex AFIP) and LATAM electronic invoices. "
         "Supports XML (direct parse), PDF, and image inputs. "
-        "Returns fully typed, validated invoice data."
+        "Includes native QR code decoding (RG 4892), CAE validation, and CUIT checksums."
     ),
     lifespan=lifespan,
 )
@@ -119,8 +119,8 @@ async def list_schemas():
         "supported": [
             {
                 "id": "afip_ar",
-                "name": "AFIP Argentina",
-                "description": "Facturas electrónicas AFIP/ARCA: tipos A, B, C, M, FCE, Notas de crédito/débito",
+                "name": "ARCA (ex AFIP) Argentina",
+                "description": "Facturas electrónicas ARCA (ex AFIP): tipos A, B, C, M, FCE, Notas de crédito y débito",
                 "formats": ["application/xml", "application/pdf", "image/jpeg", "image/png", "text/plain"],
             },
             {

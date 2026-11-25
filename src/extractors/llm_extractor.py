@@ -34,7 +34,7 @@ log = structlog.get_logger()
 # System prompt
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are an expert at extracting structured data from AFIP electronic invoices (facturas electrónicas argentinas) and other LATAM tax documents.
+_SYSTEM_PROMPT = """You are an expert at extracting structured data from ARCA (ex AFIP) electronic invoices (facturas electrónicas argentinas) and other LATAM tax documents.
 
 RULES — follow strictly:
 1. Output ONLY a valid JSON object. No markdown, no code fences, no explanations.
@@ -42,8 +42,8 @@ RULES — follow strictly:
 3. Monetary values: numeric only (no $ signs, no thousands separators). Round to 4 decimal places.
 4. CUIT: 11 digits, strip hyphens. Example: "20123456789".
 5. CAE: exactly 14 digits. If not found, null.
-6. IVA rates: only 0, 2.5, 5, 10.5, 21, 27 are valid AFIP rates.
-7. tipo_comprobante: use AFIP numeric code (1=FactA, 6=FactB, 11=FactC, 51=FactM, 201=FCE-A...).
+6. IVA rates: only 0, 2.5, 5, 10.5, 21, 27 are valid ARCA/AFIP rates.
+7. tipo_comprobante: use ARCA/AFIP numeric code (1=FactA, 6=FactB, 11=FactC, 51=FactM, 201=FCE-A...).
 8. If a field is not found or uncertain, use null — do not guess.
 9. confidence: float 0.0–1.0. Use 0.9+ only if you found CAE + total + emisor_cuit.
 10. warnings: list of strings describing any anomalies or missing critical fields.

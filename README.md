@@ -1,106 +1,132 @@
-# AFIP Invoice Extraction API
+# ARCA (ex AFIP) & LATAM Invoice Extraction API
 
-**Extrae datos estructurados de facturas electrónicas AFIP/LATAM.**
-Soporta XML, PDF e imagen. Respuesta tipada, validada y auditada.
+> **API REST de alta precisión para extraer datos estructurados (JSON) de facturas electrónicas de ARCA (ex AFIP) en Argentina y comprobantes fiscales de Latinoamérica.**
+> Soporta **PDF**, **XML**, **Imágenes escaneadas (JPG/PNG)** y texto plano.
 
-## Stack
-- **FastAPI** + Pydantic v2
-- **Gemini Flash** (PDF/imagen) · extractor XML determinístico (sin LLM)
-- **Fly.io** (deploy, $0 free tier inicial)
-- **RapidAPI** (distribución y billing)
+---
 
-## Rutas
-| Método | Path | Descripción |
-|--------|------|-------------|
-| POST | `/extract` | Extrae factura → JSON |
-| GET | `/health` | Health + estado circuit breaker |
-| GET | `/schemas` | Schemas soportados |
+## ⚡ Características Principales
 
-## Request
-```json
-{
-  "content": "<base64 o XML crudo>",
-  "content_type": "application/xml",
-  "country_schema": "afip_ar",
-  "idempotency_key": "opcional-para-no-cobrar-doble"
-}
+- **Lectura Nativa del QR de ARCA (RG 4892)**: Decodifica de forma determinística el CAE, CUIT Emisor, Punto de Venta, Número de Comprobante, Fecha y Total exactos sin costo de cómputo ni alucinaciones.
+- **Parseo Determinístico de XML ($0 costo LLM)**: Para XMLs directos de facturación electrónica.
+- **Soporte de Visión Multimodal**: Convierte y extrae datos de facturas escaneadas o fotografías mediante Gemini Flash.
+- **Validaciones Fiscales Argentinas**:
+  - Algoritmo Módulo 11 para validación de CUIT.
+  - Verificación aritmética de alícuotas de IVA (21%, 10.5%, 27%, etc.).
+  - Cruce de totales: Neto Gravado + IVA + Percepciones == Total.
+- **Billing Gate Ético**: Si un documento no es una factura válida o la confianza es baja (`confidence < 0.50`), la API responde pero marca `"billed": false` (no se factura).
+
+---
+
+## 🔗 Endpoints Públicos
+
+- **Base URL**: `https://afip-invoice-api.onrender.com`
+- **Swagger / OpenAPI interactivo**: [https://afip-invoice-api.onrender.com/docs](https://afip-invoice-api.onrender.com/docs)
+- **Health Check**: `GET /health`
+- **Extracción**: `POST /extract`
+
+---
+
+## 💻 Ejemplos de Integración
+
+### 1. cURL (Extraer Factura en PDF)
+
+```bash
+curl -X POST "https://afip-invoice-api.onrender.com/extract" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "'$(base64 -w 0 factura.pdf)'",
+    "content_type": "application/pdf",
+    "country_schema": "afip_ar"
+  }'
 ```
 
-### `content_type` soportados
-| Tipo | Extractor | Costo LLM |
-|------|-----------|-----------|
-| `application/xml` | XML parse determinístico | $0 |
-| `text/plain` | Auto-detect (XML o LLM) | $0 / mínimo |
-| `application/pdf` | pdfplumber → Gemini Flash | ~$0.001 |
-| `image/jpeg`, `image/png` | Gemini Vision | ~$0.002 |
+### 2. Python
 
-## Response
+```python
+import base64
+import requests
+
+with open("factura.pdf", "rb") as f:
+    pdf_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+response = requests.post(
+    "https://afip-invoice-api.onrender.com/extract",
+    json={
+        "content": pdf_b64,
+        "content_type": "application/pdf",
+        "country_schema": "afip_ar"
+    }
+)
+
+data = response.json()
+if data["success"]:
+    inv = data["invoice"]
+    print(f"Comprobante: {inv['tipo_comprobante_descripcion']} {inv['numero_completo']}")
+    print(f"CAE: {inv['cae']}")
+    print(f"CUIT Emisor: {inv['emisor_cuit']}")
+    print(f"Total: ${inv['total']}")
+```
+
+### 3. Node.js / TypeScript
+
+```typescript
+import fs from 'fs';
+
+const pdfBase64 = fs.readFileSync('factura.pdf', { encoding: 'base64' });
+
+const res = await fetch('https://afip-invoice-api.onrender.com/extract', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    content: pdfBase64,
+    content_type: 'application/pdf',
+    country_schema: 'afip_ar'
+  })
+});
+
+const data = await res.json();
+console.log(data.invoice);
+```
+
+---
+
+## 📋 Estructura de Respuesta JSON
+
 ```json
 {
   "success": true,
-  "billed": true,
-  "request_id": "uuid",
-  "processing_time_ms": 180,
   "invoice": {
-    "cae": "12345678901234",
+    "cae": "86451763467519",
+    "cae_vencimiento": "2026-11-17",
     "tipo_comprobante": 6,
     "tipo_comprobante_descripcion": "Factura B",
-    "punto_venta": 1,
-    "numero_comprobante": 1,
-    "numero_completo": "0001-00000001",
-    "fecha_emision": "2024-11-15",
-    "emisor_cuit": "20111111113",
-    "emisor_razon_social": "Empresa Test S.A.",
-    "total": "1210.0000",
-    "confidence": 1.0,
-    "extraction_method": "xml_parse",
+    "punto_venta": 5000,
+    "numero_comprobante": 24527132,
+    "numero_completo": "5000-24527132",
+    "fecha_emision": "2026-11-07",
+    "moneda_id": "PES",
+    "moneda_cotizacion": "1.0",
+    "emisor_cuit": "30639453738",
+    "emisor_razon_social": "TELECOM ARGENTINA S.A.",
+    "total": "39772.0600",
+    "confidence": 0.98,
+    "source_format": "pdf",
+    "extraction_method": "hybrid_qr_llm",
     "validation_passed": true,
     "warnings": []
-  }
+  },
+  "request_id": "88d41c21-96df-4695-984a-d00069c66005",
+  "processing_time_ms": 320,
+  "billed": true
 }
 ```
 
-### Billing gate
-Si `confidence < 0.50` → `"billed": false`. El cliente puede reintentar con mejor calidad de documento.
+---
 
-## Setup local
-```bash
-cp .env.example .env
-# Editar .env con tu GOOGLE_API_KEY
+## 🛠️ Tecnologías
 
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install uv && uv pip install -e ".[dev]"
-
-uvicorn src.main:app --reload
-# → http://localhost:8000/docs
-```
-
-## Tests
-```bash
-pytest tests/ -v
-```
-
-## Deploy en Fly.io
-```bash
-fly auth login
-fly launch --no-deploy
-fly secrets set GOOGLE_API_KEY=your_key
-fly deploy
-```
-
-## Pricing en RapidAPI (sugerido)
-| Tier | Precio | Descripción |
-|------|--------|-------------|
-| Freemium | $0 | 100 req/mes (XML only) |
-| Basic | $0.03/req | XML + PDF |
-| Pro | $0.08/req | XML + PDF + imagen |
-
-## Robustez implementada
-- **XML**: parse determinístico, confidence=1.0 con CAE válido
-- **PDF/imagen**: multi-pass LLM con auto-corrección en 1 intento
-- **Validación**: CUIT Módulo 11, aritmética IVA, consistencia de totales
-- **Circuit breaker**: Gemini se abre tras 3 fallos → responde 503 inmediato
-- **Retry**: tenacity con exponential backoff (3 intentos, 1→8s)
-- **Idempotencia**: cache en memoria con `idempotency_key`
-- **Billing gate**: no cobra si confidence < 0.50
-- **Never 500**: todos los errores son JSON estructurados con `billed: false`
+- **FastAPI** + **Pydantic v2**
+- **Google Gemini 3.1 Flash-Lite** (Vision & OCR)
+- **PyZBar** & **OpenCV** (Decodificación QR RG 4892)
+- **PDFPlumber** & **Poppler Utils**

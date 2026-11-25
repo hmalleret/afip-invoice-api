@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: int = 30
 
     # API
-    api_title: str = "AFIP Invoice Extraction API"
+    api_title: str = "ARCA / AFIP Invoice Extraction API"
     api_version: str = "1.0.0"
     max_content_size_mb: int = 10
     request_timeout_seconds: int = 60
