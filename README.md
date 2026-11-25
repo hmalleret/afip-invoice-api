@@ -24,6 +24,19 @@
 - **Swagger / OpenAPI interactivo**: [https://afip-invoice-api.onrender.com/docs](https://afip-invoice-api.onrender.com/docs)
 - **Health Check**: `GET /health`
 - **Extracción**: `POST /extract`
+- **Obtención de API Key**: [Comprar suscripción / pack en Polar.sh](https://polar.sh/hmalleret)
+
+---
+
+## 🔑 Autenticación
+
+Incluye tu API Key obtenida en Polar en el encabezado `X-API-Key` o `Authorization`:
+
+```bash
+-H "X-API-Key: arca_live_tu_clave"
+# o alternativamente:
+-H "Authorization: Bearer arca_live_tu_clave"
+```
 
 ---
 
@@ -33,6 +46,7 @@
 
 ```bash
 curl -X POST "https://afip-invoice-api.onrender.com/extract" \
+  -H "X-API-Key: arca_live_tu_clave" \
   -H "Content-Type: application/json" \
   -d '{
     "content": "'$(base64 -w 0 factura.pdf)'",
@@ -52,6 +66,9 @@ with open("factura.pdf", "rb") as f:
 
 response = requests.post(
     "https://afip-invoice-api.onrender.com/extract",
+    headers={
+        "X-API-Key": "arca_live_tu_clave"
+    },
     json={
         "content": pdf_b64,
         "content_type": "application/pdf",

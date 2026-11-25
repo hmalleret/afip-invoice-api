@@ -170,3 +170,47 @@ def test_cuit_invalid():
     assert _cuit_valid("abc") is False           # not digits
     assert _cuit_valid("2012345678") is False    # too short
     assert _cuit_valid("20123456785") is False   # wrong check digit
+
+
+# ---------------------------------------------------------------------------
+# Auth unit & integration tests
+# ---------------------------------------------------------------------------
+
+def test_api_key_auth_flow(monkeypatch):
+    from src.config import get_settings
+    s = get_settings()
+
+    # Enable auth requirement for this test
+    monkeypatch.setattr(s, "require_api_key", True)
+    monkeypatch.setattr(s, "master_api_key", "secret_master_123")
+
+    # 1. No key -> 401
+    r = client.post("/extract", json={
+        "content": SAMPLE_XML,
+        "content_type": "text/plain",
+    })
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "API_KEY_REQUIRED"
+
+    # 2. Master key -> 200
+    r = client.post("/extract", json={
+        "content": SAMPLE_XML,
+        "content_type": "text/plain",
+    }, headers={"X-API-Key": "secret_master_123"})
+    assert r.status_code == 200
+
+    # 3. Arca prefix key -> 200
+    r = client.post("/extract", json={
+        "content": SAMPLE_XML,
+        "content_type": "text/plain",
+    }, headers={"X-API-Key": "arca_live_key_999"})
+    assert r.status_code == 200
+
+    # 4. Bogus key -> 401
+    r = client.post("/extract", json={
+        "content": SAMPLE_XML,
+        "content_type": "text/plain",
+    }, headers={"X-API-Key": "invalid_key"})
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "INVALID_API_KEY"
+

@@ -122,23 +122,39 @@ def _get_client() -> genai.Client:
 )
 def _call_gemini(contents: list, cb: pybreaker.CircuitBreaker) -> dict:
     s = get_settings()
+    fallback_models = [s.gemini_model, "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    # Remove duplicates while preserving order
+    models_to_try = list(dict.fromkeys(fallback_models))
 
-    def _do_call():
-        response = _get_client().models.generate_content(
-            model=s.gemini_model,
-            contents=contents,
-            config=genai_types.GenerateContentConfig(
-                system_instruction=_SYSTEM_PROMPT,
-                temperature=0.0,
-                response_mime_type="application/json",
-            ),
-        )
-        return response.text
+    last_error = None
+    raw_text = None
 
-    try:
-        raw_text = cb.call(_do_call)
-    except pybreaker.CircuitBreakerError:
-        raise
+    for model_name in models_to_try:
+        def _do_call():
+            response = _get_client().models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=_SYSTEM_PROMPT,
+                    temperature=0.0,
+                    response_mime_type="application/json",
+                ),
+            )
+            return response.text
+
+        try:
+            raw_text = cb.call(_do_call)
+            if raw_text:
+                break
+        except pybreaker.CircuitBreakerError:
+            raise
+        except Exception as exc:
+            log.warning("gemini_model_attempt_failed", model=model_name, error=str(exc))
+            last_error = exc
+            continue
+
+    if not raw_text and last_error:
+        raise last_error
 
     raw = (raw_text or "").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)

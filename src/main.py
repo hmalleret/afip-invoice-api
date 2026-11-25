@@ -22,10 +22,11 @@ from google import genai
 import pybreaker
 import structlog
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .auth import get_api_key
 from .config import get_gemini_circuit_breaker, get_settings
 from .extractors.llm_extractor import extract_with_llm
 from .extractors.pdf_extractor import process_pdf
@@ -62,9 +63,11 @@ app = FastAPI(
     title=get_settings().api_title,
     version=get_settings().api_version,
     description=(
-        "Extract structured JSON data from ARCA (ex AFIP) and LATAM electronic invoices. "
-        "Supports XML (direct parse), PDF, and image inputs. "
-        "Includes native QR code decoding (RG 4892), CAE validation, and CUIT checksums."
+        "### ARCA (ex AFIP) & LATAM Electronic Invoice Extraction API\n\n"
+        "API REST de alta precisión para extraer datos estructurados JSON de facturas argentinas y comprobantes fiscales de LATAM. "
+        "Soporta PDF nativo, escaneados, imágenes (JPG/PNG), QR oficial RG 4892 y XML directo.\n\n"
+        "**Autenticación:** Incluya su API Key en el header `X-API-Key: arca_...` o `Authorization: Bearer arca_...`.\n\n"
+        "👉 **¿No tienes API Key?** Obtén acceso inmediato en [Polar.sh](" + get_settings().polar_checkout_url + ")."
     ),
     lifespan=lifespan,
 )
@@ -149,6 +152,7 @@ async def list_schemas():
     responses={
         200: {"description": "Successful extraction"},
         400: {"description": "Invalid input (not billed)"},
+        401: {"description": "Unauthorized — Missing or invalid API key"},
         402: {"description": "Low confidence result — not billed"},
         429: {"description": "Rate limited"},
         503: {"description": "Upstream service unavailable (not billed)"},
@@ -156,6 +160,7 @@ async def list_schemas():
 )
 async def extract_invoice(
     body: ExtractionRequest,
+    api_key: str = Depends(get_api_key),
     x_rapidapi_proxy_secret: Optional[str] = Header(None),
 ) -> ExtractionResponse:
     request_id = str(uuid.uuid4())
@@ -232,30 +237,54 @@ async def extract_invoice(
                         "billed": False,
                     },
                 )
-            elif pdf_res.is_scanned:
-                # Scanned PDF: convert page 1 to base64 PNG for Vision LLM
-                if not pdf_res.page_images:
-                    raise HTTPException(
-                        400,
-                        detail={"code": "INVALID_PDF", "message": "Could not render scanned PDF", "billed": False},
-                    )
-                buf = io.BytesIO()
-                pdf_res.page_images[0].save(buf, format="PNG")
-                img_b64 = base64.b64encode(buf.getvalue()).decode()
-                invoice = extract_with_llm(
-                    text=None,
-                    image_b64=img_b64,
-                    image_mime="image/png",
-                    source_format="pdf_scanned",
-                )
             else:
-                # Digital text PDF
-                invoice = extract_with_llm(
-                    text=pdf_res.text,
-                    image_b64=None,
-                    image_mime=None,
-                    source_format="pdf",
-                )
+                try:
+                    if pdf_res.is_scanned:
+                        # Scanned PDF: convert page 1 to base64 PNG for Vision LLM
+                        if not pdf_res.page_images:
+                            raise HTTPException(
+                                400,
+                                detail={"code": "INVALID_PDF", "message": "Could not render scanned PDF", "billed": False},
+                            )
+                        buf = io.BytesIO()
+                        pdf_res.page_images[0].save(buf, format="PNG")
+                        img_b64 = base64.b64encode(buf.getvalue()).decode()
+                        invoice = extract_with_llm(
+                            text=None,
+                            image_b64=img_b64,
+                            image_mime="image/png",
+                            source_format="pdf_scanned",
+                        )
+                    else:
+                        # Digital text PDF
+                        invoice = extract_with_llm(
+                            text=pdf_res.text,
+                            image_b64=None,
+                            image_mime=None,
+                            source_format="pdf",
+                        )
+                except Exception as llm_err:
+                    if qr:
+                        log.warning("llm_extraction_failed_using_qr_ground_truth", error=str(llm_err))
+                        invoice = InvoiceData(
+                            cae=qr["cae"],
+                            tipo_comprobante=qr["tipo_comprobante"],
+                            tipo_comprobante_descripcion=qr["tipo_comprobante_descripcion"],
+                            punto_venta=qr["punto_venta"],
+                            numero_comprobante=qr["numero_comprobante"],
+                            numero_completo=qr["numero_completo"],
+                            fecha_emision=qr["fecha_emision"],
+                            total=qr["total"],
+                            moneda_id=qr["moneda_id"],
+                            moneda_cotizacion=qr["moneda_cotizacion"],
+                            emisor_cuit=qr["emisor_cuit"],
+                            receptor_cuit=qr.get("receptor_cuit"),
+                            confidence=0.98,
+                            source_format="pdf",
+                            extraction_method="afip_qr",
+                        )
+                    else:
+                        raise llm_err
 
             # If QR was found, overlay ground-truth fiscal numbers
             if qr and invoice:

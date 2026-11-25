@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     # Billing: don't charge if confidence below this threshold
     min_confidence_to_bill: float = 0.50
 
+    # Authentication & Polar.sh integration
+    require_api_key: bool = False
+    master_api_key: str = ""
+    valid_api_keys: str = ""
+    polar_organization_id: str = ""
+    polar_access_token: str = ""
+    polar_checkout_url: str = "https://polar.sh/hmalleret"
+
     # RapidAPI header for identifying callers
     rapidapi_proxy_secret: str = ""
 
